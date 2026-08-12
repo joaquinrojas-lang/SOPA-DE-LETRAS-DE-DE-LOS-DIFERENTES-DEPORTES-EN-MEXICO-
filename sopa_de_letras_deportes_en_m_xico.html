@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sopa de Letras: Deportes en México</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <!-- Canvas Confetti CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <style>
+        * {
+            font-family: 'Outfit', sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0f172a 0%, #064e3b 50%, #022c22 100%);
+            min-height: 100vh;
+        }
+
+        /* Responsive cell grid styling */
+        .grid-cell {
+            aspect-ratio: 1 / 1;
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .grid-cell.selected {
+            background-color: #10b981 !important;
+            color: #ffffff !important;
+            transform: scale(1.08);
+            box-shadow: 0 0 12px rgba(16, 185, 129, 0.8);
+            z-index: 10;
+        }
+
+        .grid-cell.found {
+            background-color: #059669 !important;
+            color: #ffffff !important;
+            font-weight: 800;
+            box-shadow: inset 0 0 4px rgba(0,0,0,0.3);
+        }
+
+        .grid-cell.hint-flash {
+            animation: pulse-hint 1s infinite alternate;
+        }
+
+        @keyframes pulse-hint {
+            0% { background-color: #fbbf24; color: #000; transform: scale(1); }
+            100% { background-color: #f59e0b; color: #000; transform: scale(1.15); box-shadow: 0 0 15px #f59e0b; }
+        }
+
+        /* Glassmorphism containers */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Strikethrough green styling for discovered words */
+        .word-found {
+            color: #10b981 !important;
+            text-decoration: line-through;
+            text-decoration-color: #10b981;
+            text-decoration-thickness: 3px;
+            opacity: 0.85;
+            background-color: rgba(16, 185, 129, 0.15) !important;
+            border-color: rgba(16, 185, 129, 0.4) !important;
+        }
+
+        /* Custom scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.2);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(16, 185, 129, 0.5);
+            border-radius: 4px;
+        }
+
+        /* Selection highlight connection glow */
+        .letter-grid {
+            touch-action: none; /* Prevents scroll while dragging on grid */
+        }
+    </style>
+</head>
+<body class="text-slate-100 flex flex-col justify-between min-h-screen p-2 sm:p-4 md:p-6 overflow-x-hidden">
+
+    <!-- Top Header & Game Status -->
+    <header class="max-w-5xl mx-auto w-full mb-3">
+        <div class="glass-panel rounded-2xl p-4 shadow-2xl border-t-2 border-emerald-500/40 flex flex-col md:flex-row items-center justify-between gap-4">
+            
+            <!-- App Title with Mexican Flag Motif Accent -->
+            <div class="flex items-center gap-3 text-center md:text-left">
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-tr from-emerald-600 via-emerald-500 to-teal-400 flex items-center justify-center text-2xl shadow-lg shadow-emerald-900/50">
+                    <i class="fa-solid fa-trophy text-amber-300"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl sm:text-2xl font-black tracking-tight bg-gradient-to-r from-emerald-400 via-teal-200 to-white bg-clip-text text-transparent">
+                        Sopa de Letras
+                    </h1>
+                    <p class="text-xs sm:text-sm text-emerald-300/80 font-medium flex items-center gap-1.5 justify-center md:justify-start">
+                        <span>🇲🇽 Deportes en México</span>
+                        <span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                        <span class="text-amber-300">Nivel Intermedio</span>
+                    </p>
+                </div>
+            </div>
+
+            <!-- Stats Bar (Words count, Score, Timer) -->
+            <div class="flex items-center justify-center sm:justify-end gap-3 sm:gap-6 w-full md:w-auto">
+                <!-- Found Counter -->
+                <div class="bg-slate-900/80 px-3 py-2 rounded-xl border border-slate-700/60 text-center min-w-[90px]">
+                    <span class="block text-[10px] text-slate-400 font-semibold tracking-wider uppercase">Encontradas</span>
+                    <span id="found-count" class="text-lg font-black text-emerald-400">0 / 12</span>
+                </div>
+
+                <!-- Score -->
+                <div class="bg-slate-900/80 px-3 py-2 rounded-xl border border-slate-700/60 text-center min-w-[80px]">
+                    <span class="block text-[10px] text-slate-400 font-semibold tracking-wider uppercase">Puntos</span>
+                    <span id="score-display" class="text-lg font-black text-amber-400">0</span>
+                </div>
+
+                <!-- Countdown Timer (5 Minutes) -->
+                <div id="timer-box" class="bg-slate-900/90 px-4 py-2 rounded-xl border-2 border-emerald-500/50 text-center min-w-[110px] shadow-lg transition-colors">
+                    <span class="block text-[10px] text-slate-400 font-semibold tracking-wider uppercase flex items-center justify-center gap-1">
+                        <i class="fa-regular fa-clock"></i> Tiempo
+                    </span>
+                    <span id="timer-display" class="text-xl font-black text-emerald-400 tracking-wider">05:00</span>
+                </div>
+            </div>
+
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="max-w-5xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 items-start mb-auto">
+        
+        <!-- Word Search Grid Section (Left / Center) -->
+        <section class="lg:col-span-8 glass-panel rounded-2xl p-3 sm:p-5 shadow-2xl flex flex-col items-center">
+            
+            <!-- Word Search Canvas/Grid Container -->
+            <div class="w-full max-w-[540px] aspect-square relative flex items-center justify-center p-1 bg-slate-950/60 rounded-xl border border-emerald-900/30 shadow-inner">
+                <div id="letter-grid" class="letter-grid w-full h-full grid gap-1 p-1 bg-slate-900/80 rounded-lg select-none">
+                    <!-- Dynamic Grid Cells generated via JavaScript -->
+                </div>
+            </div>
+
+            <!-- Mobile Controls / Actions -->
+            <div class="mt-4 w-full flex items-center justify-between gap-2 px-2">
+                <button id="btn-hint" onclick="useHint()" class="flex-1 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 font-bold py-2.5 px-3 rounded-xl shadow-lg transition duration-200 active:scale-95 flex items-center justify-center gap-2 text-sm">
+                    <i class="fa-solid fa-lightbulb"></i>
+                    <span>Pista (<span id="hint-count">3</span>)</span>
+                </button>
+                <button onclick="pauseGame()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold py-2.5 px-4 rounded-xl border border-slate-600 transition active:scale-95 flex items-center justify-center gap-2 text-sm">
+                    <i id="pause-icon" class="fa-solid fa-pause"></i>
+                    <span id="pause-text" class="hidden sm:inline">Pausa</span>
+                </button>
+                <button onclick="restartGame()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold py-2.5 px-4 rounded-xl border border-slate-600 transition active:scale-95 flex items-center justify-center gap-2 text-sm">
+                    <i class="fa-solid fa-rotate-right"></i>
+                    <span class="hidden sm:inline">Reiniciar</span>
+                </button>
+                <button onclick="toggleSound()" id="btn-sound" class="bg-slate-800 hover:bg-slate-700 text-emerald-400 font-semibold p-2.5 rounded-xl border border-slate-600 transition active:scale-95 flex items-center justify-center text-sm w-11 h-11">
+                    <i class="fa-solid fa-volume-high text-lg"></i>
+                </button>
+            </div>
+
+        </section>
+
+        <!-- Words List Section (Right) -->
+        <aside class="lg:col-span-4 glass-panel rounded-2xl p-4 sm:p-5 shadow-2xl flex flex-col justify-between h-full min-h-[350px]">
+            <div>
+                <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-700/60">
+                    <h2 class="text-base font-bold text-emerald-300 uppercase tracking-wide flex items-center gap-2">
+                        <i class="fa-solid fa-list-check"></i> Deportes a Buscar
+                    </h2>
+                    <span class="text-xs bg-emerald-950 text-emerald-300 border border-emerald-800/60 font-semibold px-2.5 py-1 rounded-full">
+                        12 Palabras
+                    </span>
+                </div>
+
+                <p class="text-xs text-slate-400 mb-3">
+                    Selecciona arrastrando en línea recta (horizontal, vertical o diagonal).
+                </p>
+
+                <!-- Dynamic Word Badges List -->
+                <div id="word-list" class="grid grid-cols-2 lg:grid-cols-1 gap-2 max-h-[380px] overflow-y-auto pr-1">
+                    <!-- Word cards populated dynamically -->
+                </div>
+            </div>
+
+            <!-- Mexican Sports Trivia Snippet -->
+            <div class="mt-4 pt-3 border-t border-slate-800/80 text-xs text-slate-400 bg-slate-900/40 p-3 rounded-xl border border-slate-800">
+                <p class="font-semibold text-emerald-400 mb-1 flex items-center gap-1.5">
+                    <i class="fa-solid fa-circle-info"></i> ¿Sabías que?
+                </p>
+                <p id="trivia-text" class="leading-relaxed text-[11px] text-slate-300">
+                    La Charrería es considerada oficialmente el Deporte Nacional de México desde 1933.
+                </p>
+            </div>
+        </aside>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="max-w-5xl mx-auto w-full mt-4 text-center text-xs text-slate-500 py-2">
+        <p>Sopa de Letras Interactiva - Deportes Tradicionales y Populares en México &copy; 2026</p>
+    </footer>
+
+    <!-- Game Pause Modal -->
+    <div id="modal-pause" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md hidden z-50 flex items-center justify-center p-4">
+        <div class="glass-panel max-w-sm w-full rounded-2xl p-6 text-center shadow-2xl border-2 border-emerald-500/30">
+            <div class="w-16 h-16 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center text-3xl mx-auto mb-4 border border-emerald-500/40">
+                <i class="fa-solid fa-pause"></i>
+            </div>
+            <h3 class="text-2xl font-bold text-white mb-2">Juego En Pausa</h3>
+            <p class="text-slate-300 text-sm mb-6">El tiempo se ha detenido. ¿Listo para continuar?</p>
+            <button onclick="pauseGame()" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-3 rounded-xl shadow-lg transition duration-200">
+                Reanudar Juego
+            </button>
+        </div>
+    </div>
+
+    <!-- Victory Modal -->
+    <div id="modal-victory" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md hidden z-50 flex items-center justify-center p-4">
+        <div class="glass-panel max-w-md w-full rounded-2xl p-6 text-center shadow-2xl border-2 border-emerald-400/50">
+            <div class="w-20 h-20 bg-gradient-to-tr from-amber-500 to-emerald-400 text-slate-950 rounded-full flex items-center justify-center text-4xl mx-auto mb-4 shadow-xl shadow-emerald-950">
+                <i class="fa-solid fa-crown"></i>
+            </div>
+            <h3 class="text-3xl font-black text-white mb-1">¡Felicidades! 🎉</h3>
+            <p class="text-emerald-300 font-semibold text-sm mb-4">Completaste la Sopa de Letras</p>
+            
+            <div class="bg-slate-900/90 rounded-xl p-4 mb-6 border border-slate-700/60 grid grid-cols-2 gap-4">
+                <div>
+                    <span class="block text-xs text-slate-400 uppercase font-semibold">Puntaje Final</span>
+                    <span id="win-score" class="text-2xl font-black text-amber-400">0</span>
+                </div>
+                <div>
+                    <span class="block text-xs text-slate-400 uppercase font-semibold">Tiempo Sobrante</span>
+                    <span id="win-time" class="text-2xl font-black text-emerald-400">00:00</span>
+                </div>
+            </div>
+
+            <button onclick="restartGame()" class="w-full bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black py-3.5 rounded-xl shadow-lg shadow-emerald-950 transition duration-200 text-lg">
+                ¡Jugar De Nuevo!
+            </button>
+        </div>
+    </div>
+
+    <!-- Game Over Modal -->
+    <div id="modal-gameover" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md hidden z-50 flex items-center justify-center p-4">
+        <div class="glass-panel max-w-md w-full rounded-2xl p-6 text-center shadow-2xl border-2 border-red-500/40">
+            <div class="w-20 h-20 bg-red-500/20 text-red-400 rounded-full flex items-center justify-center text-4xl mx-auto mb-4 border border-red-500/40">
+                <i class="fa-solid fa-hourglass-end"></i>
+            </div>
+            <h3 class="text-2xl font-black text-white mb-1">¡Tiempo Agotado!</h3>
+            <p class="text-slate-300 text-sm mb-4">Se acabaron los 5 minutos del reloj.</p>
+
+            <div class="bg-slate-900/90 rounded-xl p-4 mb-6 border border-slate-700/60">
+                <span class="block text-xs text-slate-400 uppercase font-semibold">Palabras Encontradas</span>
+                <span id="lose-count" class="text-2xl font-black text-amber-400">0 / 12</span>
+            </div>
+
+            <button onclick="restartGame()" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-3.5 rounded-xl shadow-lg transition duration-200 text-lg">
+                Reintentar
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Mexican Sports Dictionary (12 words selected for grid placement)
+        const ALL_SPORTS = [
+            { word: "FUTBOL", name: "Fútbol", icon: "fa-futbol", trivia: "El fútbol es el deporte más popular en México, con una enorme afición nacional." },
+            { word: "LUCHALIBRE", name: "Lucha Libre", icon: "fa-mask", trivia: "La Lucha Libre mexicana es Patrimonio Cultural Intangible de la Ciudad de México." },
+            { word: "BEISBOL", name: "Béisbol", icon: "fa-baseball-bat-ball", trivia: "El Béisbol tiene una tradición centenaria en el norte y costas de México." },
+            { word: "BOXEO", name: "Boxeo", icon: "fa-mitten", trivia: "México ha producido más de 200 campeones mundiales de Boxeo profesional." },
+            { word: "CHARRERIA", name: "Charrería", icon: "fa-hat-cowboy", trivia: "La Charrería es considerada oficialmente el Deporte Nacional de México." },
+            { word: "CLAVADOS", name: "Clavados", icon: "fa-person-swimming", trivia: "Clavados es la disciplina que más medallas olímpicas ha dado a México." },
+            { word: "TAEKWONDO", name: "Taekwondo", icon: "fa-hand-fist", trivia: "México es una potencia olímpica en Taekwondo con múltiples medallistas de oro." },
+            { word: "BASQUETBOL", name: "Básquetbol", icon: "fa-basketball", trivia: "El básquetbol es sumamente popular en zonas del norte y comunidades de Oaxaca." },
+            { word: "FRONTON", name: "Frontón", icon: "fa-table-tennis-paddle-ball", trivia: "El Pelota Vasca / Frontón guarda una histórica tradición de torneos en México." },
+            { word: "ATLETISMO", name: "Atletismo", icon: "fa-person-running", trivia: "México destaca mundialmente en la disciplina de Marcha y Fondistas de alta montaña." },
+            { word: "NATACION", name: "Natación", icon: "fa-water-ladder", trivia: "La natación mexicana cuenta con legendarios nadadores en aguas abiertas y piscina." },
+            { word: "PELOTA", name: "Pelota Purépecha", icon: "fa-fire", trivia: "La Pelota Purépecha es un juego ancestral prehispánico que aún se practica con fuego." }
+        ];
+
+        const GRID_SIZE = 14; // Intermediate difficulty: 14x14 grid
+        const TOTAL_TIME = 300; // 5 minutes in seconds
+
+        let grid = [];
+        let wordLocations = {}; // { word: [{r, c}, ...] }
+        let foundWords = new Set();
+        let hintsLeft = 3;
+        let score = 0;
+        let timerSeconds = TOTAL_TIME;
+        let timerInterval = null;
+        let isPaused = false;
+        let isGameOver = false;
+        let soundEnabled = true;
+
+        // Interaction state
+        let isSelecting = false;
+        let startCoords = null;
+        let currentCoords = null;
+        let selectedCells = [];
+
+        // Web Audio API Synth setup for SFX
+        let audioCtx = null;
+
+        function getAudioContext() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            return audioCtx;
+        }
+
+        function playSound(type) {
+            if (!soundEnabled) return;
+            try {
+                const ctx = getAudioContext();
+                if (ctx.state === 'suspended') {
+                    ctx.resume();
+                }
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+
+                const now = ctx.currentTime;
+
+                if (type === 'select') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(400, now);
+                    gain.gain.setValueAtTime(0.05, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+                    osc.start(now);
+                    osc.stop(now + 0.08);
+                } else if (type === 'found') {
+                    // Ascending chord
+                    [523.25, 659.25, 783.99, 1046.50].forEach((freq, idx) => {
+                        const o = ctx.createOscillator();
+                        const g = ctx.createGain();
+                        o.type = 'triangle';
+                        o.frequency.setValueAtTime(freq, now + idx * 0.06);
+                        g.gain.setValueAtTime(0.12, now + idx * 0.06);
+                        g.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.06 + 0.25);
+                        o.connect(g);
+                        g.connect(ctx.destination);
+                        o.start(now + idx * 0.06);
+                        o.stop(now + idx * 0.06 + 0.25);
+                    });
+                } else if (type === 'hint') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(880, now);
+                    gain.gain.setValueAtTime(0.1, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+                    osc.start(now);
+                    osc.stop(now + 0.2);
+                } else if (type === 'error') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(200, now);
+                    gain.gain.setValueAtTime(0.08, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+                    osc.start(now);
+                    osc.stop(now + 0.2);
+                } else if (type === 'win') {
+                    // Celebration fanfare
+                    const notes = [440, 554.37, 659.25, 880];
+                    notes.forEach((freq, i) => {
+                        const o = ctx.createOscillator();
+                        const g = ctx.createGain();
+                        o.type = 'sine';
+                        o.frequency.setValueAtTime(freq, now + i * 0.12);
+                        g.gain.setValueAtTime(0.15, now + i * 0.12);
+                        g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.12 + 0.4);
+                        o.connect(g);
+                        g.connect(ctx.destination);
+                        o.start(now + i * 0.12);
+                        o.stop(now + i * 0.12 + 0.4);
+                    });
+                }
+            } catch (e) {
+                console.log("Audio play error", e);
+            }
+        }
+
+        // Directions for Intermediate Level: Horizontal, Vertical, Diagonal (Both forward & reverse)
+        const DIRECTIONS = [
+            { r: 0, c: 1 },   // Right
+            { r: 0, c: -1 },  // Left
+            { r: 1, c: 0 },   // Down
+            { r: -1, c: 0 },  // Up
+            { r: 1, c: 1 },   // Down-Right
+            { r: -1, c: -1 }, // Up-Left
+            { r: 1, c: -1 },  // Down-Left
+            { r: -1, c: 1 }   // Up-Right
+        ];
+
+        function initGrid() {
+            // Fill grid with empty space
+            grid = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(''));
+            wordLocations = {};
+            foundWords.clear();
+
+            // Try to place each word
+            ALL_SPORTS.forEach(sportObj => {
+                const word = sportObj.word;
+                let placed = false;
+                let attempts = 0;
+
+                while (!placed && attempts < 200) {
+                    attempts++;
+                    const dir = DIRECTIONS[Math.floor(Math.random() * DIRECTIONS.length)];
+                    const startR = Math.floor(Math.random() * GRID_SIZE);
+                    const startC = Math.floor(Math.random() * GRID_SIZE);
+
+                    if (canPlaceWord(word, startR, startC, dir)) {
+                        const coords = [];
+                        for (let i = 0; i < word.length; i++) {
+                            const r = startR + dir.r * i;
+                            const c = startC + dir.c * i;
+                            grid[r][c] = word[i];
+                            coords.push({ r, c });
+                        }
+                        wordLocations[word] = coords;
+                        placed = true;
+                    }
+                }
+            });
+
+            // Fill empty cells with Spanish letter frequencies
+            const SPANISH_LETTERS = "ABCDEGHILMNOPRSTUVXZAAAAEEEEIIOOOOUUU";
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    if (!grid[r][c]) {
+                        grid[r][c] = SPANISH_LETTERS[Math.floor(Math.random() * SPANISH_LETTERS.length)];
+                    }
+                }
+            }
+        }
+
+        function canPlaceWord(word, startR, startC, dir) {
+            for (let i = 0; i < word.length; i++) {
+                const r = startR + dir.r * i;
+                const c = startC + dir.c * i;
+                if (r < 0 || r >= GRID_SIZE || c < 0 || c >= GRID_SIZE) return false;
+                if (grid[r][c] !== '' && grid[r][c] !== word[i]) return false;
+            }
+            return true;
+        }
+
+        function renderBoard() {
+            const gridContainer = document.getElementById('letter-grid');
+            gridContainer.style.gridTemplateColumns = `repeat(${GRID_SIZE}, minmax(0, 1fr))`;
+            gridContainer.innerHTML = '';
+
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'grid-cell flex items-center justify-center font-extrabold text-xs sm:text-sm md:text-base rounded-md sm:rounded-lg bg-slate-800/80 text-slate-200 border border-slate-700/40 cursor-pointer select-none';
+                    cell.dataset.r = r;
+                    cell.dataset.c = c;
+                    cell.innerText = grid[r][c];
+
+                    // Attach touch/mouse events
+                    cell.addEventListener('mousedown', (e) => handleStart(r, c, e));
+                    cell.addEventListener('mouseenter', () => handleMove(r, c));
+
+                    gridContainer.appendChild(cell);
+                }
+            }
+
+            renderWordList();
+            updateStats();
+        }
+
+        function renderWordList() {
+            const listContainer = document.getElementById('word-list');
+            listContainer.innerHTML = '';
+
+            ALL_SPORTS.forEach(sport => {
+                const isFound = foundWords.has(sport.word);
+                const item = document.createElement('div');
+                item.id = `word-badge-${sport.word}`;
+                item.className = `p-2.5 rounded-xl border flex items-center justify-between transition-all duration-300 text-xs sm:text-sm ${
+                    isFound 
+                    ? 'word-found' 
+                    : 'bg-slate-900/60 border-slate-700/60 text-slate-200 hover:border-emerald-500/40'
+                }`;
+
+                item.innerHTML = `
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid ${sport.icon} ${isFound ? 'text-emerald-400' : 'text-emerald-500/70'}"></i>
+                        <span class="font-bold tracking-wide">${sport.name}</span>
+                    </div>
+                    ${isFound ? '<i class="fa-solid fa-circle-check text-emerald-400 text-base"></i>' : '<i class="fa-regular fa-circle text-slate-600 text-xs"></i>'}
+                `;
+
+                // Hover trivia update
+                item.addEventListener('mouseenter', () => {
+                    document.getElementById('trivia-text').innerText = sport.trivia;
+                });
+
+                listContainer.appendChild(item);
+            });
+        }
+
+        function handleStart(r, c, e) {
+            if (isPaused || isGameOver) return;
+            getAudioContext(); // Enable audio context on interaction
+            isSelecting = true;
+            startCoords = { r, c };
+            currentCoords = { r, c };
+            updateSelection();
+            playSound('select');
+        }
+
+        function handleMove(r, c) {
+            if (!isSelecting || isPaused || isGameOver) return;
+            if (currentCoords.r === r && currentCoords.c === c) return;
+            currentCoords = { r, c };
+            updateSelection();
+        }
+
+        function handleEnd() {
+            if (!isSelecting) return;
+            isSelecting = false;
+            checkSelection();
+            clearSelectionHighlight();
+        }
+
+        // Global mouseup & touch handlers
+        window.addEventListener('mouseup', handleEnd);
+        
+        // Touch events for mobile support
+        const gridEl = document.getElementById('letter-grid');
+        gridEl.addEventListener('touchstart', (e) => {
+            const touch = e.touches[0];
+            const target = document.elementFromPoint(touch.clientX, touch.clientY);
+            if (target && target.dataset.r !== undefined) {
+                handleStart(parseInt(target.dataset.r), parseInt(target.dataset.c), e);
+            }
+        }, { passive: true });
+
+        gridEl.addEventListener('touchmove', (e) => {
+            if (!isSelecting) return;
+            const touch = e.touches[0];
+            const target = document.elementFromPoint(touch.clientX, touch.clientY);
+            if (target && target.dataset.r !== undefined) {
+                handleMove(parseInt(target.dataset.r), parseInt(target.dataset.c));
+            }
+        }, { passive: true });
+
+        gridEl.addEventListener('touchend', handleEnd);
+
+        // Compute valid straight line cell selection (Horizontal, Vertical, Diagonal)
+        function getLineCells(start, end) {
+            const dr = end.r - start.r;
+            const dc = end.c - start.c;
+            
+            const steps = Math.max(Math.abs(dr), Math.abs(dc));
+            if (steps === 0) return [start];
+
+            const stepR = dr === 0 ? 0 : dr / steps;
+            const stepC = dc === 0 ? 0 : dc / steps;
+
+            // Only allow straight lines (0, 90, 45 degree angles)
+            if (stepR !== 0 && stepC !== 0 && Math.abs(dr) !== Math.abs(dc)) {
+                return [start];
+            }
+
+            const line = [];
+            for (let i = 0; i <= steps; i++) {
+                line.push({
+                    r: Math.round(start.r + stepR * i),
+                    c: Math.round(start.c + stepC * i)
+                });
+            }
+            return line;
+        }
+
+        function updateSelection() {
+            clearSelectionHighlight();
+            selectedCells = getLineCells(startCoords, currentCoords);
+            
+            selectedCells.forEach(coord => {
+                const cell = getCellElement(coord.r, coord.c);
+                if (cell && !cell.classList.contains('found')) {
+                    cell.classList.add('selected');
+                }
+            });
+        }
+
+        function clearSelectionHighlight() {
+            document.querySelectorAll('.grid-cell.selected').forEach(cell => {
+                cell.classList.remove('selected');
+            });
+        }
+
+        function getCellElement(r, c) {
+            return document.querySelector(`.grid-cell[data-r="${r}"][data-c="${c}"]`);
+        }
+
+        function checkSelection() {
+            if (selectedCells.length < 2) return;
+
+            // Form string from selected coordinates
+            const selectedWord = selectedCells.map(coord => grid[coord.r][coord.c]).join('');
+            const reversedWord = selectedWord.split('').reverse().join('');
+
+            let matchedSport = ALL_SPORTS.find(s => !foundWords.has(s.word) && (s.word === selectedWord || s.word === reversedWord));
+
+            if (matchedSport) {
+                // Word Discovered!
+                foundWords.add(matchedSport.word);
+                
+                // Highlight cells permanently in green
+                const wordCoords = wordLocations[matchedSport.word];
+                wordCoords.forEach(coord => {
+                    const cell = getCellElement(coord.r, coord.c);
+                    if (cell) {
+                        cell.classList.add('found');
+                    }
+                });
+
+                // Update trivia panel to matched sport
+                document.getElementById('trivia-text').innerText = matchedSport.trivia;
+
+                // Add points: 100 base + 10 points per letter
+                score += 100 + (matchedSport.word.length * 10);
+                
+                playSound('found');
+                renderWordList();
+                updateStats();
+
+                // Check victory condition
+                if (foundWords.size === ALL_SPORTS.length) {
+                    triggerWin();
+                }
+            } else {
+                playSound('error');
+            }
+        }
+
+        function startTimer() {
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                if (isPaused || isGameOver) return;
+
+                timerSeconds--;
+                updateTimerDisplay();
+
+                if (timerSeconds <= 0) {
+                    triggerGameOver();
+                }
+            }, 1000);
+        }
+
+        function updateTimerDisplay() {
+            const minutes = Math.floor(timerSeconds / 60);
+            const seconds = timerSeconds % 60;
+            const display = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            
+            const timerEl = document.getElementById('timer-display');
+            const timerBox = document.getElementById('timer-box');
+            
+            timerEl.innerText = display;
+
+            // Danger warning when < 60 seconds
+            if (timerSeconds <= 60) {
+                timerBox.classList.remove('border-emerald-500/50');
+                timerBox.classList.add('border-red-500', 'animate-pulse');
+                timerEl.classList.remove('text-emerald-400');
+                timerEl.classList.add('text-red-400');
+            } else {
+                timerBox.classList.remove('border-red-500', 'animate-pulse');
+                timerBox.classList.add('border-emerald-500/50');
+                timerEl.classList.remove('text-red-400');
+                timerEl.classList.add('text-emerald-400');
+            }
+        }
+
+        function updateStats() {
+            document.getElementById('found-count').innerText = `${foundWords.size} / ${ALL_SPORTS.length}`;
+            document.getElementById('score-display').innerText = score;
+            document.getElementById('hint-count').innerText = hintsLeft;
+        }
+
+        function useHint() {
+            if (isPaused || isGameOver || hintsLeft <= 0) return;
+
+            // Find an unfound word
+            const remainingSports = ALL_SPORTS.filter(s => !foundWords.has(s.word));
+            if (remainingSports.length === 0) return;
+
+            const targetSport = remainingSports[Math.floor(Math.random() * remainingSports.length)];
+            const targetCoords = wordLocations[targetSport.word];
+            if (!targetCoords || targetCoords.length === 0) return;
+
+            // Highlight the first letter cell with flash effect
+            const firstCell = getCellElement(targetCoords[0].r, targetCoords[0].c);
+            if (firstCell) {
+                firstCell.classList.add('hint-flash');
+                setTimeout(() => {
+                    firstCell.classList.remove('hint-flash');
+                }, 2500);
+            }
+
+            hintsLeft--;
+            score = Math.max(0, score - 20); // Small penalty for hint
+            playSound('hint');
+            updateStats();
+
+            if (hintsLeft === 0) {
+                document.getElementById('btn-hint').classList.add('opacity-50', 'cursor-not-allowed');
+            }
+        }
+
+        function pauseGame() {
+            if (isGameOver) return;
+            isPaused = !isPaused;
+            const modal = document.getElementById('modal-pause');
+            const pauseIcon = document.getElementById('pause-icon');
+            const pauseText = document.getElementById('pause-text');
+
+            if (isPaused) {
+                modal.classList.remove('hidden');
+                pauseIcon.className = 'fa-solid fa-play';
+                pauseText.innerText = 'Continuar';
+            } else {
+                modal.classList.add('hidden');
+                pauseIcon.className = 'fa-solid fa-pause';
+                pauseText.innerText = 'Pausa';
+            }
+        }
+
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            const btn = document.getElementById('btn-sound');
+            if (soundEnabled) {
+                btn.innerHTML = '<i class="fa-solid fa-volume-high text-lg"></i>';
+                btn.classList.remove('text-slate-500');
+                btn.classList.add('text-emerald-400');
+            } else {
+                btn.innerHTML = '<i class="fa-solid fa-volume-xmark text-lg"></i>';
+                btn.classList.remove('text-emerald-400');
+                btn.classList.add('text-slate-500');
+            }
+        }
+
+        function triggerWin() {
+            isGameOver = true;
+            clearInterval(timerInterval);
+
+            // Bonus points for time remaining
+            const timeBonus = timerSeconds * 5;
+            score += timeBonus;
+            updateStats();
+
+            playSound('win');
+
+            // Fire confetti burst
+            if (window.confetti) {
+                confetti({
+                    particleCount: 120,
+                    spread: 80,
+                    origin: { y: 0.6 }
+                });
+            }
+
+            const minutes = Math.floor(timerSeconds / 60);
+            const seconds = timerSeconds % 60;
+            document.getElementById('win-score').innerText = score;
+            document.getElementById('win-time').innerText = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+
+            setTimeout(() => {
+                document.getElementById('modal-victory').classList.remove('hidden');
+            }, 600);
+        }
+
+        function triggerGameOver() {
+            isGameOver = true;
+            clearInterval(timerInterval);
+            playSound('error');
+
+            document.getElementById('lose-count').innerText = `${foundWords.size} / ${ALL_SPORTS.length}`;
+            document.getElementById('modal-gameover').classList.remove('hidden');
+        }
+
+        function restartGame() {
+            // Reset modals
+            document.getElementById('modal-victory').classList.add('hidden');
+            document.getElementById('modal-gameover').classList.add('hidden');
+            document.getElementById('modal-pause').classList.add('hidden');
+
+            // Reset variables
+            isPaused = false;
+            isGameOver = false;
+            score = 0;
+            hintsLeft = 3;
+            timerSeconds = TOTAL_TIME;
+
+            document.getElementById('btn-hint').classList.remove('opacity-50', 'cursor-not-allowed');
+            document.getElementById('pause-icon').className = 'fa-solid fa-pause';
+            document.getElementById('pause-text').innerText = 'Pausa';
+
+            // Generate new board & start timer
+            initGrid();
+            renderBoard();
+            startTimer();
+        }
+
+        // Initialize on load
+        window.onload = function() {
+            initGrid();
+            renderBoard();
+            startTimer();
+        };
+    </script>
+</body>
+</html>
